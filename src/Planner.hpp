@@ -1,6 +1,6 @@
 // Coulombo Ⓒ 2018
 // [Computer Physics Communications] Różański & Zieliński:
-// Efficient computation of Coulomb and exchange integrals for very large systems
+// Efficient computation of Coulomb and exchange integrals for multi-million atom nanostructures
 #ifndef COULOMBO_PLANNER_HPP
 #define COULOMBO_PLANNER_HPP
 
