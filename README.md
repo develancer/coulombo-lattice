@@ -30,6 +30,16 @@ Phys. Rev. B 94 (2016) 045440
 Proceedings of the IEEE 93 (2), 216–231 (2005), Invited paper, Special Issue on
 Program Generation, Optimization, and Platform Adaptation
 
+### Package directory structure
+
+* example — includes an example input/output specification with a shell script
+* src — includes all auxiliary C++ source files (the header files as well)
+* coulombo.cpp — main C++ source file (the one with `main()` function)
+* LICENCE — licence for the program distribution
+* Makefile — makefile script for program compilation and testing
+* README.md — description of the package (this file)
+* run-tests.cpp — additional source file consisting of all unit tests
+
 ## How to use it?
 
 ### Compilation
