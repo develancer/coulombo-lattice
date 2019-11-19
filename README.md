@@ -1,8 +1,10 @@
 Coulombo
 ====
 
-[Computer Physics Communications] Różański & Zieliński:  
-Efficient computation of Coulomb and exchange integrals for multi-million atom nanostructures
+P. T. Różański & M. Zieliński:
+Efficient computation of Coulomb and exchange integrals for multi-million atom nanostructures,
+Computer Physics Communications 238 (2019), pp. 254–261,
+DOI: [10.1016/j.cpc.2018.12.011](https://doi.org/10.1016/j.cpc.2018.12.011)
 
 ## What is it?
 
