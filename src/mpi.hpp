@@ -18,7 +18,7 @@ public:
 
 	void operator=(Type&& source);
 
-	operator MPI_Datatype();
+	operator MPI_Datatype() const;
 
 private:
 	MPI_Datatype datatype;

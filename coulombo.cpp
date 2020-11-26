@@ -60,8 +60,8 @@ void coulombo(const ParseResults& pr)
 	}
 
 	// parse various settings
-	double step = atof(pr.getValue("step").c_str());
-	if (!std::isfinite(step) || step<=0) {
+	double gridStep = atof(pr.getValue("step").c_str());
+	if (!std::isfinite(gridStep) || gridStep<=0) {
 		throwfr("invalid step value");
 	}
 	double dielectric = 1.0;
@@ -74,6 +74,9 @@ void coulombo(const ParseResults& pr)
 
 	// read input files
 	int inputCount = pr.getArgCount();
+	if (inputCount >= std::numeric_limits<short>::max()) {
+	    throwfr("too many input files");
+	}
 	for (int input = 0; input<inputCount; ++input) {
 		functions->appendFile(pr.getArg(input));
 	}
@@ -82,15 +85,21 @@ void coulombo(const ParseResults& pr)
 	auto products = functions->createProducts();
 
 	// generate list of integrals to be computed
-	Planner planner(products.size());
+	std::shared_ptr<Planner> planner;
+	if (mpi::root()) {
+		planner = std::make_shared<MasterPlanner>(products.size());
+	} else {
+		planner = std::make_shared<Planner>();
+	}
 	int integralCount = 0;
-	std::vector<std::array<int, 4>> integralSpecs;
-	for (int i1 = 1; i1<=inputCount; ++i1) {
-		for (int i2 = 1; i2<=inputCount; ++i2) {
-			for (int i3 = 1; i3<=inputCount; ++i3) {
-				for (int i4 = 1; i4<=inputCount; ++i4) {
+	std::vector<std::array<short, 4>> integralSpecs;
+	if (mpi::root())
+	for (short i1 = 1; i1<=inputCount; ++i1) {
+		for (short i2 = 1; i2<=inputCount; ++i2) {
+			for (short i3 = 1; i3<=inputCount; ++i3) {
+				for (short i4 = 1; i4<=inputCount; ++i4) {
 					if (pattern.match(i1, i2, i3, i4)) {
-						planner.addIntegral(i1, i2, i3, i4);
+						planner->addIntegral(i1, i2, i3, i4);
 						integralSpecs.push_back({i1, i2, i3, i4});
 						++integralCount;
 					}
@@ -100,10 +109,12 @@ void coulombo(const ParseResults& pr)
 	}
 
 	// compute the correct calculation plan
+	planner->computePlan();
+
 	Dimension dimension = functions->getPaddedDimension();
 
 	// initialize dielectric screening model
-	Vector3D<double> stepXYZ = {step, step, step};
+	Vector3D<double> stepXYZ = {gridStep, gridStep, gridStep};
 	std::unique_ptr<Interaction> interaction;
 	if (pr.hasValue("tf-lattice", value)) {
 		double latticeConstant = atof(value.c_str());
@@ -127,8 +138,10 @@ void coulombo(const ParseResults& pr)
 	std::vector<complex> integralValues(integralCount);
 	int lastLeftProduct = -1;
 	int lastRightProduct = -1;
-	bool lastRightConjugate = false;
-	for (const PlannerStep& step : planner.computePlan()) {
+	unsigned char lastRightConjugate = 0;
+
+	PlannerStep step;
+	while (planner->getNextStep(step)) {
 		if (step.left.product!=lastLeftProduct) {
 			products[step.left.product]->map(calculator.input, false);
 			calculator.prepare();
@@ -141,7 +154,9 @@ void coulombo(const ParseResults& pr)
 			lastRightConjugate = rightConjugate;
 			valueLast = calculator.calculate();
 		}
-		integralValues[step.id] = step.left.conjugate ? std::conj(valueLast) : valueLast;
+		if (mpi::root()) {
+			integralValues[step.id] = step.left.conjugate ? std::conj(valueLast) : valueLast;
+		}
 	}
 
 	// export results to standard output

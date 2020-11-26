@@ -35,7 +35,7 @@ void Type::operator=(Type&& source)
 	std::swap(datatype, source.datatype);
 }
 
-Type::operator MPI_Datatype()
+Type::operator MPI_Datatype() const
 {
 	return datatype;
 }
