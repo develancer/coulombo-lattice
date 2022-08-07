@@ -102,6 +102,13 @@ void broadcast(void* buffer, int count, MPI_Datatype datatype)
 	);
 }
 
+void gather(void* sendbuf, int sendcount, MPI_Datatype datatype, void* recvbuf, int recvcount)
+{
+	THROW_IF_FAILS(
+			MPI_Gather(sendbuf, sendcount, datatype, recvbuf, recvcount, datatype, 0, MPI_COMM_WORLD)
+	);
+}
+
 void reduce(void* sendbuf, void* recvbuf, int count, MPI_Datatype datatype, MPI_Op op)
 {
 	THROW_IF_FAILS(

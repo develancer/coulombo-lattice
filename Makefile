@@ -1,5 +1,5 @@
 CXX=mpic++
-CXXFLAGS=-std=c++11 -DNDEBUG -fopenmp -Wall -Wextra -O3 -Isrc
+CXXFLAGS=-std=c++11 -DNDEBUG -fopenmp -Wall -Wextra -Wno-cast-function-type -O3 -Isrc
 LDLIBS=-lfftw3_mpi -lfftw3_omp -lfftw3 -larmadillo
 .PHONY : clean test install uninstall
 

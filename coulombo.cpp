@@ -21,13 +21,15 @@
 #include "Pattern.hpp"
 #include "Planner.hpp"
 #include "Product.hpp"
+#include "Timer.hpp"
 
-#define VERSION "1.0"
+#define VERSION "2.0"
 
 //----------------------------------------------------------------------
 
 void coulombo(const ParseResults& pr)
 {
+	Timer timer;
 	std::string value;
 
 	// initialize FFTW
@@ -51,35 +53,72 @@ void coulombo(const ParseResults& pr)
 	}
 	#endif
 
+	timer.start("Reading atom positions");
+
 	// initialize input type
-	std::shared_ptr<FunctionCollection> functions;
-	if (pr.hasFlag("spin")) {
-		functions.reset(new SpinFunctionCollection());
-	} else {
-		functions.reset(new WaveFunctionCollection());
+	int orbitalCount = 20;
+	if (pr.hasValue("orbitals", value)) {
+		orbitalCount = atoi(value.c_str());
+		if (orbitalCount <= 0) {
+			throwfr("invalid value for orbitals");
+		}
 	}
+	int headerLinesToSkip = 0;
+	if (pr.hasValue("skip-lines", value)) {
+		headerLinesToSkip = atoi(value.c_str());
+		if (headerLinesToSkip <= 0) {
+			throwfr("invalid value for skip-lines");
+		}
+	}
+	std::shared_ptr<FunctionCollection> functions;
+	functions.reset(new FunctionCollection(pr.getValue("atoms"), orbitalCount, headerLinesToSkip));
 
 	// parse various settings
-	double gridStep = atof(pr.getValue("step").c_str());
-	if (!std::isfinite(gridStep) || gridStep<=0) {
-		throwfr("invalid step value");
-	}
 	double dielectric = 1.0;
 	if (pr.hasValue("dielectric", value)) {
 		dielectric = atof(value.c_str());
 	}
 	std::string integrals = "****";
 	pr.hasValue("integrals", integrals);
-	Pattern pattern(integrals);
+
+	std::string outputDir;
+	if (pr.hasValue("output-dir", outputDir) && !outputDir.empty()) {
+		outputDir += '/';
+	}
+
+	timer.start("Reading wavefunctions");
 
 	// read input files
-	int inputCount = pr.getArgCount();
+	int inputCount = pr.getArgCount(), hoStateCount = 0, elStateCount = 0;
 	if (inputCount >= std::numeric_limits<short>::max()) {
 	    throwfr("too many input files");
 	}
 	for (int input = 0; input<inputCount; ++input) {
+		const std::string arg = pr.getArg(input);
+
+		const char* basename = arg.c_str();
+		auto last_slash = arg.find_last_of('/');
+		if (last_slash != std::string::npos) {
+			basename += last_slash + 1;
+		}
+		if (basename[0] == 'h') {
+			if (elStateCount) {
+				throwfr("hole states must appear before electron states");
+			}
+			++hoStateCount;
+		}
+		else if (basename[0] == 'e') {
+			++elStateCount;
+		}
+		else {
+			throwfr("invalid state file name: %s", arg.c_str());
+		}
 		functions->appendFile(pr.getArg(input));
 	}
+
+	timer.start("Preparing plan");
+
+	Pattern pattern(integrals, hoStateCount);
 
 	// generate list of product generators
 	auto products = functions->createProducts();
@@ -113,8 +152,16 @@ void coulombo(const ParseResults& pr)
 
 	Dimension dimension = functions->getPaddedDimension();
 
+	timer.start("Initializing calculator");
+
+	// get onsite value
+	double onsite = 0.0;
+	if (pr.hasValue("onsite", value)) {
+		onsite = atof(value.c_str());
+	}
+
 	// initialize dielectric screening model
-	Vector3D<double> stepXYZ = {gridStep, gridStep, gridStep};
+	Vector3D<double> stepXYZ = functions->getStepValues();
 	std::unique_ptr<Interaction> interaction;
 	if (pr.hasValue("tf-lattice", value)) {
 		double latticeConstant = atof(value.c_str());
@@ -124,14 +171,16 @@ void coulombo(const ParseResults& pr)
 		if (!std::isgreater(dielectric, 1.0)) {
 			throwfr("dielectric constant must be >1 to use Thomas-Fermi model");
 		}
-		interaction.reset( new InteractionThomasFermi(stepXYZ, dielectric, latticeConstant) );
+		interaction.reset( new InteractionThomasFermi(stepXYZ, onsite, dielectric, latticeConstant) );
 	} else {
-		interaction.reset( new InteractionSimple(stepXYZ, dielectric) );
+		interaction.reset( new InteractionSimple(stepXYZ, onsite, dielectric) );
 	}
 
 	// initialize buffers
 	CoulombCalculator calculator(dimension);
 	calculator.initialize(*interaction);
+
+	timer.start("Computing requested integrals");
 
 	// perform the actual computation
 	complex valueLast;
@@ -159,13 +208,57 @@ void coulombo(const ParseResults& pr)
 		}
 	}
 
-	// export results to standard output
+	timer.start("Exporting results");
+
+	// export results to output files
 	if (mpi::root()) {
+		std::map<std::array<short, 4>, complex> values;
 		for (int i = 0; i<integralCount; ++i) {
 			const auto& specs = integralSpecs[i];
 			const complex& value = integralValues[i];
-			printf("%2d %2d %2d %2d  %12.9lf %12.9lf\n", specs[0], specs[1], specs[2], specs[3], std::real(value), std::imag(value));
+			values[specs] = value;
 		}
+
+		char core[5]; core[4] = 0;
+		for (int ti=0; ti<2; ++ti)
+			for (int tj=0; tj<2; ++tj)
+				for (int tk=0; tk<2; ++tk)
+					for (int tl=0; tl<2; ++tl) {
+						FILE* file = nullptr;
+						core[0] = ti ? 'e' : 'h';
+						core[1] = tj ? 'e' : 'h';
+						core[2] = tk ? 'e' : 'h';
+						core[3] = tl ? 'e' : 'h';
+
+						unsigned Ni = ti ? elStateCount : hoStateCount;
+						unsigned Nj = tj ? elStateCount : hoStateCount;
+						unsigned Nk = tk ? elStateCount : hoStateCount;
+						unsigned Nl = tl ? elStateCount : hoStateCount;
+
+						for (unsigned ni=1; ni<=Ni; ++ni)
+							for (unsigned nj=1; nj<=Nj; ++nj)
+								for (unsigned nk=1; nk<=Nk; ++nk)
+									for (unsigned nl=1; nl<=Nl; ++nl) {
+
+										std::array<short, 4> specs;
+										specs[0] = ti ? hoStateCount + ni : hoStateCount + 1 - ni;
+										specs[1] = tj ? hoStateCount + nj : hoStateCount + 1 - nj;
+										specs[2] = tk ? hoStateCount + nk : hoStateCount + 1 - nk;
+										specs[3] = tl ? hoStateCount + nl : hoStateCount + 1 - nl;
+
+										auto it = values.find(specs);
+										if (it != values.end()) {
+											if (!file) file = fopen((outputDir + core + ".txt").c_str(), "w");
+											const complex value = it->second;
+											fprintf(file, "%2d %2d %2d %2d   %17.14f %17.14f\n",
+												ni, nj, nk, nl, std::real(value), std::imag(value)
+											);
+										}
+									}
+						if (file) {
+							fclose(file);
+						}
+					}
 	}
 }
 
@@ -175,10 +268,13 @@ int main(int argc, char** argv)
 		mpi::init(argc, argv);
 
 		Parser cmd;
-		cmd.allowFlag("spin");
+		cmd.allowValue("atoms");
 		cmd.allowValue("dielectric");
 		cmd.allowValue("integrals");
-		cmd.allowValue("step");
+		cmd.allowValue("onsite");
+		cmd.allowValue("orbitals");
+		cmd.allowValue("output-dir");
+		cmd.allowValue("skip-lines");
 		#ifdef _OPENMP
 		cmd.allowValue("threads-per-node");
 		#endif
@@ -187,18 +283,20 @@ int main(int argc, char** argv)
 		ParseResults pr = cmd.process(argc, argv);
 		if (!pr.getArgCount()) {
 			fprintf(stderr,
-					"Coulombo v" VERSION " (c) 2018 [Computer Physics Communications] Rozanski & Zielinski:\n"
+					"Coulombo v" VERSION " (c) 2022 [Computer Physics Communications] Rozanski & Zielinski:\n"
 					"Efficient computation of Coulomb and exchange integrals for multi-million atom nanostructures\n"
 					"\nUSAGE:\n"
 					" coulombo [FLAGS/OPTIONS] data files ...\n"
-					"\nFLAGS:\n"
-					"  --spin   if each wavefunction consists of two data files: for spin-up and down\n"
 					"\nOPTIONS:\n"
+					"  --atoms=PATH           path to *.3d file with atoms' positions\n"
 					"  --dielectric=VALUE     dielectric constant, default: 1\n"
 					"  --integrals=LIST       comma-separated list of integrals to be computed\n"
-					"                           (eg. \"ijji,1ij1\"),\n"
+					"                           (eg. \"eeee,hhhh,ehhe,eheh\"),\n"
 					"                           default: all integrals are computed\n"
-					"  --step=VALUE           grid step length (Å)\n"
+					"  --onsite=ENERGY        energy for on-site contribution, default: 0 (eV)\n"
+					"  --orbitals=N           number of (spin-)orbitals per atom, default: 20\n"
+					"  --output-dir=DIR       directory for output files, default: current\n"
+					"  --skip-lines=N         number of lines to be skipped on top of each LCAO file, default: 0\n"
 					#ifdef _OPENMP
 					"  --threads-per-node=N   number of OpenMP threads per node, default: 1\n"
 					#endif

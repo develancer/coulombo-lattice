@@ -1,26 +1,24 @@
-Coulombo
+Coulombo (TB)
 ====
-
-P. T. Różański & M. Zieliński:
-Efficient computation of Coulomb and exchange integrals for multi-million atom nanostructures,
-Computer Physics Communications 238 (2019), pp. 254–261,
-DOI: [10.1016/j.cpc.2018.12.011](https://doi.org/10.1016/j.cpc.2018.12.011)
 
 ## What is it?
 
-Coulombo is a ready-to-use implementation for calculating Coulomb matrix
-elements for a given set of input wavefunctions. This implementation is based on
-the approach introduced in [1], using fast Fourier transform to compute
-convolution. In this work we further significantly improved the method by
-eliminating the need to extend the computational domain with padding, thus
-reducing the memory consumption by a factor of 8. The optimal computational plan
-for each run is prepared by calculating a minimal vertex cover on a graph
-representing a subset of requested Coulomb matrix elements.
+Coulombo (TB) is a ready-to-use implementation for calculating Coulomb matrix
+elements for a given set of input wave-functions given in the form of LCAO
+(linear combination of atomic orbitals), typically resulting from the
+empirical tight binding approach. This implementation is build on top of the method
+introduced in [3], using fast Fourier transform without zero-padding the
+computational domain, allowing to achieve the quasi-linear scaling with
+minimal memory footprint.
 
-The implementation is fully parallelized in distributed-memory model, using MPI
-and parallel routines from FFTW [2]. Minimal vertex cover is computed by a
-greedy approximation algorithm, which we found to perform significantly better
-than the standard text-book heuristic.
+In this work we adapt the method to use the LCAO functions directly, without a need
+to introduce any auxiliary set of atomic orbitals (e.g. Slater orbitals). Instead,
+the method identifies and explores the underlying grid associated with the regular crystal
+lattice in order to perform efficient numerical calculations on a regular, three-dimensional
+grid.
+
+Similarly to the wavefunction-based version [3], this implementation is fully parallelized
+in distributed-memory model, using MPI and parallel routines from FFTW [2]. 
 
 [1] P. T. Różański & M. Zieliński,  
 “Linear scaling approach for atomistic calculation of excitonic properties of
@@ -31,6 +29,10 @@ Phys. Rev. B 94 (2016) 045440
 “The Design and Implementation of FFTW3”,
 Proceedings of the IEEE 93 (2), 216–231 (2005), Invited paper, Special Issue on
 Program Generation, Optimization, and Platform Adaptation
+
+[3] P. T. Różański & M. Zieliński,
+“Efficient computation of Coulomb and exchange integrals for multi-million atom nanostructures”,
+Computer Physics Communications 238 (2019), pp. 254–261
 
 ### Package directory structure
 
@@ -71,14 +73,32 @@ the major Linux distributions.
 ### Running Coulombo
 
 Coulombo should be run with a set of command line parameters. Results of the
-computation (values of the Coulomb matrix elements) will be written to the
-standard output, whereas all diagnostic and error message will be written to the
+computation (values of the Coulomb matrix elements) will be written to a set of text
+files, named eeee.txt, hhhh.txt, ehhe.txt and so on,
+whereas all diagnostic and error message will be written to the
 standard error stream.
 
-Most important part of command line parameters are the paths to the wavefunction
-data in form of binary files in _armadillo_ machine-dependent format (one file
-per wavefunction, unless --spin flag is given, see below). At least one input
-file path should be specified.
+Most important part of command line parameters are the paths to input files:
+* exactly one path to a text file representing atom positions, given as `--atoms` parameter,
+where each line corresponds to the coordinates of a single atom in angstroms (Å) as
+```
+1st_atom_x 1st_atom_y 1st_atom_z
+2nd_atom_x 2nd_atom_y 2nd_atom_z
+...
+```
+* one or more paths to text files, each starting with `e` or `h`
+representing wavefunction data in LCAO form. Each file consists of the vector of all
+LCAO coefficients, one per line, in the following order:
+```
+1st_atom_1st_orbital_real_part 1st_atom_1st_orbital_imaginary_part
+1st_atom_2nd_orbital_real_part 1st_atom_2nd_orbital_imaginary_part
+...
+2nd_atom_1st_orbital_real_part 2nd_atom_1st_orbital_imaginary_part
+2nd_atom_2nd_orbital_real_part 2nd_atom_2nd_orbital_imaginary_part
+...
+```
+
+Please see the `example` subdirectory for an actual example.
 
 List of all possible parameters can be displayed by running coulombo with no
 additional arguments. They are, in alphabetical order:
@@ -91,34 +111,32 @@ constant of 1 (as for vacuum) is assumed.
 > for high-frequency dielectric constant of GaAs
 
 * --**integrals**=LIST specifies the comma-separated list of integrals to be
-computed. If this option is not given, all possible integrals (M⁴ where M is
-the number of wavefunctions) will be computed.
+computed. If this option is not given, the integrals will be restricted to `eeee,hhhh,ehhe,eheh`.
+Each integral specification may consist of
+  * a digit `1`-`9`, representing a single, specified state (`1` represent the first state etc.)
+  * a letter `a`-`z` except `e` or `h`, representing any state, but all occurrences of the same letter
+  correspond to each other
+  (e.g. `ijki` represent all integrals in which first and fourth state is the same)
+  * a letter `e` or `h`, representing any state depending on whether its name starts with e or h,
+  but in contrary to the previous bullet, here all occurrences of `e` and `h` are independent
+  * an asterisk `*`, representing any state, and all occurrences of `*` are independent
 
-> Example: `coulombo ... --integrals=1212 f1.bin f2.bin`  
+> Example: `coulombo ... --integrals=1212 h1.bin e1.bin`  
 > computes only the single integral 1212  
-> (defined as ∫ f₁\*(r⃗) f₂\*(r⃗') G(r⃗-r⃗') f₁(r⃗') f₂(r⃗) dr³ dr'³)
+> (defined as ∫ f₁*(r⃗) f₂*(r⃗') G(r⃗-r⃗') f₁(r⃗') f₂(r⃗) dr³ dr'³)
 
-> Example: `coulombo ... --integrals=ijji f1.bin f2.bin`  
+> Example: `coulombo ... --integrals=ijji h1.bin e1.bin`  
 > computes integrals 1111, 1221, 2112, 2222  
 
-> Example: `coulombo ... --integrals=1*1* f1.bin f2.bin`  
+> Example: `coulombo ... --integrals=1*1* h1.bin e1.bin`  
 > computes integrals 1111, 1112, 1211, 1212  
 
-* --**spin** specifies that the calculations should include spin. Each
-wavefunction should be specified with two consecutive file paths, representing
-spin-up and spin-down parts of the wavefunction. Order of up/down parts is not
-relevant, as long as it is consistent across all wavefunctions.
+> Example: `coulombo ... --integrals=ehhe h1.bin h2.bin e1.bin`  
+> computes integrals 3113, 3123, 3213, 3223
 
-> Example: `coulombo ... --spin f1-U.bin f1-D.bin f2-U.bin f2-D.bin`  
-> assumes that the calculation should be performed for two wavefunctions: first
-> given by files f1-U.bin and f1-D.bin and the second given by files f2-U.bin
-and f2-D.bin.
-
-* --**step**=VALUE specifies the size of the grid step (in ångströms) of the
-provided wavefunction files. This option is mandatory.
-
-> Example: `coulombo --step=0.8 ...`  
-> assumes that the wavefunction files have the grid step of 0.8 Å (0.08 nm)
+* --**skip-lines**=N allows to skip the first N lines from each LCAO data file
+(it affects only LCAO files and not the file with atoms’ positions). Regardless of this value,
+extra columns in each input file will be ignored as well.
 
 * --**threads-per-node**=N specifies the requested number of OpenMP threads per each
 MPI node. If this option is not given, one thread per node is assumed and no
@@ -136,39 +154,26 @@ screening model (defined by _dielectric_ parameter) is used.
 
 #### Example
 
-Subdirectory “example” contains a small example consisting of two wavefunctions.
-The wavefunctions represent the first electron state (LUMO) and the second hole
-state (a Kramers-degenerate counterpart to the HOMO state) of a InAs/InP quantum
-dot. The example is run as
+Subdirectory “example” contains a small example consisting of a single wavefunction
+The wavefunctions represent the ground state of a single phosphorous dopant
+in a small box of silicon atoms with a size of around (5 nm)³.
+The example is run as
 
 ```
-coulombo --dielectric=12.4 --spin --step=10 \
-         --integrals=1111,1122,1221,2222 \
-         e1-D.arma e1-U.arma h2-D.arma h2-U.arma
+coulombo --atoms=X.3d --dielectric=11.4 --orbitals=10 --skip-lines=1 el_1.dat
 ```
 
-by requesting four integrals:
-
-* `1111` equivalent to J<sub>ee</sub> electron-electron Coulomb integral,
-* `1122` equivalent to exchange integral ⟨e₁h₁e₂h₂⟩ due to Kramers degeneracy,
-* `1221` equivalent to J<sub>eh</sub> electron-hole Coulomb integral,
-* `2222` equivalent to J<sub>hh</sub> hole-hole Coulomb integral.
+which will compute a single integral `1111` equivalent to J<sub>ee</sub> electron-electron Coulomb integral.
 
 The results are as follows:
 
 ```
- 1  1  1  1   0.017643339  0.000000000
- 1  1  2  2  -0.000026347  0.000040578
- 1  2  2  1   0.017413492  0.000000000
- 2  2  2  2   0.017726404  0.000000000
+ 1  1  1  1    0.090340071977
 ```
 
 which, by taking absolute values of the integrals, translate to
 
-* J<sub>ee</sub> = 17.64 meV
-* ⟨e₁h₁e₂h₂⟩ = 48.4 µeV
-* J<sub>eh</sub> = 17.41 meV
-* J<sub>hh</sub> = 17.72 meV
+* J<sub>ee</sub> = 90.34 meV
 
 ### Licence
 

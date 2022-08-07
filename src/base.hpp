@@ -27,9 +27,4 @@ struct Vector3D {
  */
 const double E2_4PE0 = 14.39963737103201;
 
-/**
- * integral of 1/|r₁-r₂| over box [0;1]³×[0;1]³
- */
-const double BOX_INTEGRAL_0 = 1.88231264439;
-
 #endif

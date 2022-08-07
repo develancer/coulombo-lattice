@@ -12,7 +12,8 @@
 
 class Pattern {
 public:
-	Pattern(const std::string& description)
+	Pattern(const std::string& description, int holeStateCount)
+			:holeStateCount(holeStateCount)
 	{
 		std::string::size_type start = 0, comma;
 		while ((comma = description.find(',', start))!=std::string::npos) {
@@ -33,6 +34,7 @@ public:
 	}
 
 private:
+	int holeStateCount;
 	std::list<std::string> patterns;
 
 	static void checkCharacter(char c)
@@ -55,7 +57,7 @@ private:
 		}
 	}
 
-	static bool matchLetter(char c, int i, std::vector<int>& assignments)
+	bool matchLetter(char c, int i, std::vector<int>& assignments) const
 	{
 		assert(i>0);
 		if (c=='*') {
@@ -63,6 +65,12 @@ private:
 		}
 		else if (c>='1' && c<='9') {
 			return i==(c-'0');
+		}
+		else if (c=='h') {
+			return i <= holeStateCount;
+		}
+		else if (c=='e') {
+			return i > holeStateCount;
 		}
 		else {
 			if (assignments[c]) {
@@ -75,7 +83,7 @@ private:
 		}
 	}
 
-	static bool matchPattern(const std::string& pattern, int i0, int i1, int i2, int i3)
+	bool matchPattern(const std::string& pattern, int i0, int i1, int i2, int i3) const
 	{
 		std::vector<int> assignments(128, 0); // indexed by ASCII codes 0-127
 		// TODO zmiana na va_list

@@ -46,6 +46,8 @@ void barrier();
 
 void broadcast(void* buffer, int count, MPI_Datatype datatype);
 
+void gather(void* sendbuf, int sendcount, MPI_Datatype datatype, void* recvbuf, int recvcount);
+
 void reduce(void* sendbuf, void* recvbuf, int count, MPI_Datatype datatype, MPI_Op op);
 
 Type contiguous(int count, MPI_Datatype datatype);

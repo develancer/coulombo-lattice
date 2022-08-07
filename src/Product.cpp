@@ -9,33 +9,23 @@ Product::~Product() { }
 
 //----------------------------------------------------------------------
 
-ProductFromWavefunctions::ProductFromWavefunctions(const Domain<complex>* left, const Domain<complex>* right)
-		:left(left), right(right) { }
+ProductFromTightBinding::ProductFromTightBinding(
+		const arma::Mat<complex>* left, const arma::Mat<complex>* right, const std::vector<int>* atomIndices)
+		:left(left), right(right), atomIndices(atomIndices) { }
 
-void ProductFromWavefunctions::map(Domain<complex>& F, bool conjugate) const
+void ProductFromTightBinding::map(Domain<complex>& F, bool conjugate) const
 {
+	F.zeros();
+	const int atomCount = atomIndices->size();
 	if (conjugate) {
-		F = (*left)%arma::conj(*right);
+		for (int i = 0; i < atomCount; ++i) {
+			F[(*atomIndices)[i]] = arma::accu( left->col(i) % arma::conj(right->col(i)) );
+		}
 	}
 	else {
-		F = arma::conj(*left)%(*right);
-	}
-}
-
-//----------------------------------------------------------------------
-
-ProductFromSpinfunctions::ProductFromSpinfunctions(
-		const Domain<complex>* leftD, const Domain<complex>* leftU,
-		const Domain<complex>* rightD, const Domain<complex>* rightU)
-		:leftU(leftU), leftD(leftD), rightU(rightU), rightD(rightD) { }
-
-void ProductFromSpinfunctions::map(Domain<complex>& F, bool conjugate) const
-{
-	if (conjugate) {
-		F = (*leftU)%arma::conj(*rightU)+(*leftD)%arma::conj(*rightD);
-	}
-	else {
-		F = arma::conj(*leftU)%(*rightU)+arma::conj(*leftD)%(*rightD);
+		for (int i = 0; i < atomCount; ++i) {
+			F[(*atomIndices)[i]] = arma::accu( arma::conj(left->col(i)) % right->col(i) );
+		}
 	}
 }
 

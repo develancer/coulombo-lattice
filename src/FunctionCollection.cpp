@@ -4,85 +4,101 @@
 #include "mpi.hpp"
 #include "throwf.hpp"
 #include "FunctionCollection.hpp"
+#include <fstream>
 
 //----------------------------------------------------------------------
+
+FunctionCollection::FunctionCollection(const std::string& atomPositionsPath, int orbitalCount, int headerLinesToSkip)
+		: headerLinesToSkip(headerLinesToSkip), orbitalCount(orbitalCount), totalAtomCount(0)
+{
+	arma::Mat<double> atomPositions;
+	if (mpi::root()) {
+		atomPositions = loadAtomsPositions(atomPositionsPath);
+	}
+	broadcaster.reset(new Broadcaster(atomPositions, orbitalCount));
+	cellIndices = broadcaster->getLocalCellIndices();
+}
 
 Dimension FunctionCollection::getPaddedDimension() const
 {
 	if (!broadcaster) {
-		throwfl("broadcaster is not yet initialized");
+		throwfl("broadcaster is not initialized correctly");
 	}
 	return broadcaster->getPaddedDimension();
 }
 
-std::shared_ptr<Domain<complex>> FunctionCollection::loadDomainFromFile(const std::string& path)
+Vector3D<double> FunctionCollection::getStepValues() const
 {
-	arma::Cube<complex> input;
+	if (!broadcaster) {
+		throwfl("broadcaster is not initialized correctly");
+	}
+	return broadcaster->getStepValues();
+}
+
+arma::Mat<double> FunctionCollection::loadAtomsPositions(const std::string& path)
+{
+	std::vector<double> coordinates;
+	double x, y, z;
+	std::ifstream file(path);
+	if (!file.is_open()) {
+		throwfr("could not open file: %s", path.c_str());
+	}
+	std::string line;
+	while (std::getline(file, line) && sscanf(line.c_str(), "%lf%lf%lf", &x, &y, &z) == 3) {
+		++totalAtomCount;
+		coordinates.push_back(x);
+		coordinates.push_back(y);
+		coordinates.push_back(z);
+	}
+	return arma::Mat<double>(coordinates.data(), 3, totalAtomCount);
+}
+
+std::shared_ptr<arma::Mat<complex>> FunctionCollection::loadFunctionFromFile(const std::string& path)
+{
+	arma::Mat<complex> input;
+	if (!broadcaster) {
+		throwfl("broadcaster is not initialized correctly");
+	}
 	if (mpi::root()) {
 		// only the root process actually reads the file
-		if (!input.load(path)) {
-			// if loading complex cube fails, we try to load is as real-valued
-			arma::Cube<double> inputReal;
-			if (!inputReal.load(path)) {
-				// if this doesn't work either, throw an exception
-				throwfr("cannot load data file %s", path.c_str());
-			}
-			input = arma::conv_to<arma::Cube<complex >>::from(inputReal);
+		input.set_size(orbitalCount, totalAtomCount);
+		std::ifstream file(path);
+		if (!file.is_open()) {
+			throwfr("could not open file: %s", path.c_str());
 		}
-	}
-	if (!broadcaster) {
-		// Broadcaster is created based on dimensions of the input
-		Dimension dimension(input.n_rows, input.n_cols, input.n_slices);
-		broadcaster.reset(new Broadcaster(dimension));
+		double re, im;
+		std::string line;
+		for (int i=0; i<headerLinesToSkip; ++i) {
+			std::getline(file, line);
+		}
+		for (int a=0; a<totalAtomCount; ++a) {
+			for (int orbital=0; orbital<orbitalCount; ++orbital) {
+				if (!std::getline(file, line) || sscanf(line.c_str(), "%lf%lf", &re, &im) != 2) {
+					throwfr("file is truncated: %s", path.c_str());
+				}
+				input(orbital, a) = complex(re, im);
+			}
+		}
 	}
 	return broadcaster->broadcastData(input);
 }
 
-//----------------------------------------------------------------------
-
-void WaveFunctionCollection::appendFile(const std::string& path)
+void FunctionCollection::appendFile(const std::string& path)
 {
-	functions.push_back(loadDomainFromFile(path));
+	functions.push_back(loadFunctionFromFile(path));
 }
 
-ProductCollection WaveFunctionCollection::createProducts() const
+ProductCollection FunctionCollection::createProducts() const
 {
 	ProductCollection products;
 	int functionCount = functions.size();
 	for (int fL = 0; fL<functionCount; ++fL) {
 		for (int fR = 0; fR<=fL; ++fR) {
 			std::shared_ptr<Product> product(
-					new ProductFromWavefunctions(
+					new ProductFromTightBinding(
 							functions[fL].get(),
-							functions[fR].get()
-					)
-			);
-			products.push_back(product);
-		}
-	}
-	return products;
-}
-
-//----------------------------------------------------------------------
-
-void SpinFunctionCollection::appendFile(const std::string& path)
-{
-	(functionsU.size() < functionsD.size() ? functionsU : functionsD).push_back(loadDomainFromFile(path));
-}
-
-ProductCollection SpinFunctionCollection::createProducts() const
-{
-	ProductCollection products;
-	if (functionsD.size() != functionsU.size()) {
-		throw std::runtime_error("--spin requires even number of data files");
-	}
-	int functionCount = functionsU.size();
-	for (int fL = 0; fL<functionCount; ++fL) {
-		for (int fR = 0; fR<=fL; ++fR) {
-			std::shared_ptr<Product> product(
-					new ProductFromSpinfunctions(
-							functionsD[fL].get(), functionsU[fL].get(),
-							functionsD[fR].get(), functionsU[fR].get()
+							functions[fR].get(),
+							&cellIndices
 					)
 			);
 			products.push_back(product);

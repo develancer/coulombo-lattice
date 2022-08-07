@@ -18,39 +18,28 @@ using ProductCollection = std::vector<std::shared_ptr<Product>>;
 
 class FunctionCollection {
 public:
-	virtual void appendFile(const std::string& path) =0;
-	virtual ProductCollection createProducts() const =0;
+	FunctionCollection(const std::string& atomPositionsPath, int orbitalCount, int headerLinesToSkip);
+
+	void appendFile(const std::string& path);
+
+	ProductCollection createProducts() const;
 
 	Dimension getPaddedDimension() const;
 
+	Vector3D<double> getStepValues() const;
+
 protected:
-	std::shared_ptr<Domain<complex>> loadDomainFromFile(const std::string& path);
+	arma::Mat<double> loadAtomsPositions(const std::string& path);
+
+	std::shared_ptr<arma::Mat<complex>> loadFunctionFromFile(const std::string& path);
 
 private:
+	int headerLinesToSkip;
+	int orbitalCount;
+	int totalAtomCount;
+	std::vector<int> cellIndices;
 	std::unique_ptr<Broadcaster> broadcaster;
-};
-
-//----------------------------------------------------------------------
-
-class WaveFunctionCollection: public FunctionCollection {
-
-	void appendFile(const std::string& path);
-	ProductCollection createProducts() const;
-
-private:
-	std::vector<std::shared_ptr<Domain<complex>>> functions;
-};
-
-//----------------------------------------------------------------------
-
-class SpinFunctionCollection: public FunctionCollection {
-
-	void appendFile(const std::string& path);
-	ProductCollection createProducts() const;
-
-private:
-	std::vector<std::shared_ptr<Domain<complex>>> functionsU;
-	std::vector<std::shared_ptr<Domain<complex>>> functionsD;
+	std::vector<std::shared_ptr<arma::Mat<complex>>> functions;
 };
 
 //----------------------------------------------------------------------

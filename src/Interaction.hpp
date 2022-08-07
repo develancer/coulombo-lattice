@@ -19,8 +19,8 @@ public:
 template<class IMPL>
 class InteractionBase : public Interaction {
 public:
-	InteractionBase(const Vector3D<double>& step)
-			:step(step) { }
+	InteractionBase(const Vector3D<double>& step, double onsite)
+			:step(step), onsite(onsite) { }
 
 	/**
 	 * We assume the interaction to be symmetric, i.e.
@@ -31,8 +31,7 @@ public:
 	 */
 	void map(Domain<real>& G) const
 	{
-		const double unitCell = step.x*step.y*step.z;
-		const double constant = E2_4PE0*unitCell*unitCell;
+		const double constant = E2_4PE0;
 		const int zStart = G.dimension.zOffset, zEnd = zStart+G.dimension.z;
 		const IMPL* self = static_cast<const IMPL*>(this);
 		for (int iz = zStart; iz<zEnd; ++iz) {
@@ -47,22 +46,20 @@ public:
 		}
 		if (!zStart && zEnd) {
 			// only one process has point (0,0,0)
-			assert(step.z==step.x);
-			assert(step.z==step.y);
-			double r = step.z / BOX_INTEGRAL_0; // harmonic mean of distance inside the central box
-			G(0, 0, 0) = constant / (self->dielectric(r) * r);
+			G(0, 0, 0) = onsite;
 		}
 	}
 
 private:
 	const Vector3D<double> step;
+	const double onsite;
 };
 
 //----------------------------------------------------------------------
 
 class InteractionSimple: public InteractionBase<InteractionSimple> {
 public:
-	InteractionSimple(const Vector3D<double>& step, double dielectric);
+	InteractionSimple(const Vector3D<double>& step, double onsite, double dielectric);
 
 	double dielectric(double r) const;
 
@@ -74,7 +71,7 @@ private:
 
 class InteractionThomasFermi : public InteractionBase<InteractionThomasFermi> {
 public:
-	InteractionThomasFermi(const Vector3D<double>& step, double dielectric, double latticeConstant);
+	InteractionThomasFermi(const Vector3D<double>& step, double onsite, double dielectric, double latticeConstant);
 
 	double dielectric(double r) const;
 

@@ -14,21 +14,29 @@
 
 class Broadcaster {
 public:
-	Broadcaster(const Dimension& dimension);
+	Broadcaster(const arma::Mat<double>& atomPositions, int orbitalCount);
 
-	std::shared_ptr<Domain<complex>> broadcastData(const arma::Cube<complex>& input);
+	std::shared_ptr<arma::Mat<complex>> broadcastData(const arma::Mat<complex>& input);
+
+	std::vector<int> getLocalCellIndices() const;
 
 	Dimension getPaddedDimension() const;
 
+	Vector3D<double> getStepValues() const;
+
 private:
+	int orbitalCount;
 	Dimension dimensionRaw, dimensionPad;
 	DistributedDimension dimensionLocal;
 
-	mpi::Type typeSlicePad;
-	mpi::Type typeSliceRaw;
-	std::vector<int> zOffsets, zLengths;
+	mpi::Type typeAtomCoeffs;
+	std::vector<int> atomOffsets, atomCounts;
+	std::vector<int> localCellIndices;
+	Vector3D<double> step;
 
 	static mpi::Type createTypeDimension(void);
+
+	static mpi::Type createTypeVector3D(void);
 
 	static Dimension round4FFT(const Dimension& dimension);
 };

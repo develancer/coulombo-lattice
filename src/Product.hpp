@@ -16,31 +16,17 @@ public:
 
 //----------------------------------------------------------------------
 
-class ProductFromWavefunctions: public Product {
+class ProductFromTightBinding: public Product {
 public:
-	ProductFromWavefunctions(const Domain<complex>* left, const Domain<complex>* right);
+	ProductFromTightBinding(const arma::Mat<complex>* left, const arma::Mat<complex>* right,
+			const std::vector<int>* atomIndices);
 
 	void map(Domain<complex>& F, bool conjugate) const;
 
 private:
-	const Domain<complex>* left;
-	const Domain<complex>* right;
-};
-
-//----------------------------------------------------------------------
-
-class ProductFromSpinfunctions: public Product {
-public:
-	ProductFromSpinfunctions(const Domain<complex>* leftD, const Domain<complex>* leftU, const Domain<complex>* rightD,
-			const Domain<complex>* rightU);
-
-	void map(Domain<complex>& F, bool conjugate) const;
-
-private:
-	const Domain<complex>* leftU;
-	const Domain<complex>* leftD;
-	const Domain<complex>* rightU;
-	const Domain<complex>* rightD;
+	const arma::Mat<complex>* left;
+	const arma::Mat<complex>* right;
+	const std::vector<int>* atomIndices;
 };
 
 //----------------------------------------------------------------------

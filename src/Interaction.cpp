@@ -5,8 +5,8 @@
 
 //----------------------------------------------------------------------
 
-InteractionSimple::InteractionSimple(const Vector3D<double>& step, double dielectric)
-		:InteractionBase<InteractionSimple>(step), dielectric_(dielectric) { }
+InteractionSimple::InteractionSimple(const Vector3D<double>& step, double onsite, double dielectric)
+		:InteractionBase<InteractionSimple>(step, onsite), dielectric_(dielectric) { }
 
 double InteractionSimple::dielectric(double) const
 {
@@ -15,8 +15,8 @@ double InteractionSimple::dielectric(double) const
 
 //----------------------------------------------------------------------
 
-InteractionThomasFermi::InteractionThomasFermi(const Vector3D<double>& step, double dielectric, double latticeConstant)
-		:InteractionBase<InteractionThomasFermi>(step), dielectric_(dielectric), latticeConstant(latticeConstant) {
+InteractionThomasFermi::InteractionThomasFermi(const Vector3D<double>& step, double onsite, double dielectric, double latticeConstant)
+		:InteractionBase<InteractionThomasFermi>(step, onsite), dielectric_(dielectric), latticeConstant(latticeConstant) {
 	const double eps = 1.0e-12;
 	qTF_ = 2.0/sqrt(M_PI) * cbrt(96.0*M_PI*M_PI) / latticeConstant;
 	double x = sqrt(6.0*(dielectric_ - 1.0)), dx;
