@@ -1,9 +1,9 @@
-Coulombo (TB)
+Coulombo-Lattice
 ====
 
 ## What is it?
 
-Coulombo (TB) is a ready-to-use implementation for calculating Coulomb matrix
+Coulombo-Lattice is a ready-to-use implementation for calculating Coulomb matrix
 elements for a given set of input wave-functions given in the form of LCAO
 (linear combination of atomic orbitals), typically resulting from the
 empirical tight binding approach. This implementation is build on top of the method
