@@ -1,6 +1,11 @@
 Coulombo-Lattice
 ====
 
+P. T. Różański & M. Zieliński:
+Exploiting underlying crystal lattice for efficient computation of Coulomb matrix elements in multi-million atoms nanostructures,
+Computer Physics Communications 287 (2023), pp. 108693,
+DOI: [10.1016/j.cpc.2023.108693](https://doi.org/10.1016/j.cpc.2023.108693)
+
 ## What is it?
 
 Coulombo-Lattice is a ready-to-use implementation for calculating Coulomb matrix
