@@ -82,6 +82,15 @@ public:
 	 * should have been already called.
 	 */
 	complex calculate(void);
+
+	/**
+	 * Return the reference to the quasi-potential computed with the most recent prepare() all.
+	 * @return reference to the internal computational domain
+	 */
+	inline const SingleDomain<complex>& potential() const
+	{
+		return V_;
+	}
 };
 
 //----------------------------------------------------------------------

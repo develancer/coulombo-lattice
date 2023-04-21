@@ -45,7 +45,7 @@ static void computeGrid(const arma::Mat<double>& atomPositions,
 //----------------------------------------------------------------------
 
 Broadcaster::Broadcaster(const arma::Mat<double>& atomPositions, int orbitalCount)
-		:orbitalCount(orbitalCount), atomOffsets(mpi::size()), atomCounts(mpi::size())
+		:orbitalCount(orbitalCount), totalAtomCount(0), atomOffsets(mpi::size()), atomCounts(mpi::size())
 {
 	Vector3D<double> origin; // used only by root process
 	if (mpi::root()) {
@@ -71,9 +71,9 @@ Broadcaster::Broadcaster(const arma::Mat<double>& atomPositions, int orbitalCoun
 	}
 	mpi::gather(&dimensionLocal.zOffset, 1, MPI_INT, zOffsets.data(), 1);
 	if (mpi::root()) {
-		const int atomCount = atomPositions.n_cols;
-		atomCellIndices.reserve(atomCount);
-		for (int node=0, a=0; a<atomCount; ++a) {
+		totalAtomCount = atomPositions.n_cols;
+		atomCellIndices.reserve(totalAtomCount);
+		for (int node=0, a=0; a<totalAtomCount; ++a) {
 			int ix = lrint((atomPositions(0, a) - origin.x) / step.x);
 			int iy = lrint((atomPositions(1, a) - origin.y) / step.y);
 			int iz = lrint((atomPositions(2, a) - origin.z) / step.z);
@@ -90,10 +90,7 @@ Broadcaster::Broadcaster(const arma::Mat<double>& atomPositions, int orbitalCoun
 	mpi::broadcast(atomOffsets.data(), mpi_size, MPI_INT);
 	mpi::broadcast(atomCounts.data(), mpi_size, MPI_INT);
 
-	const int localAtomCount = atomCounts[mpi::rank()];
-	localCellIndices.resize(localAtomCount);
-	MPI_Scatterv(atomCellIndices.data(), atomCounts.data(), atomOffsets.data(), MPI_INT,
-			localCellIndices.data(), localAtomCount, MPI_INT, 0, MPI_COMM_WORLD);
+	scatterArrayAtomWise(atomCellIndices, localCellIndices, MPI_INT);
 }
 
 std::shared_ptr<arma::Mat<complex>> Broadcaster::broadcastData(const arma::Mat<complex>& input)

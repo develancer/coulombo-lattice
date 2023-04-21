@@ -94,17 +94,40 @@ ProductCollection FunctionCollection::createProducts() const
 	int functionCount = functions.size();
 	for (int fL = 0; fL<functionCount; ++fL) {
 		for (int fR = 0; fR<=fL; ++fR) {
-			std::shared_ptr<Product> product(
-					new ProductFromTightBinding(
-							functions[fL].get(),
-							functions[fR].get(),
-							&cellIndices
-					)
-			);
-			products.push_back(product);
+			products.push_back(std::make_shared<ProductFromTightBinding>(
+				functions[fL].get(),
+				functions[fR].get(),
+				&cellIndices
+			));
 		}
 	}
 	return products;
+}
+
+
+ProductCollection FunctionCollection::createSelfProducts() const
+{
+	ProductCollection products;
+	int functionCount = functions.size();
+	for (int fL = 0; fL<functionCount; ++fL) {
+		products.push_back(std::make_shared<ProductFromTightBinding>(
+			functions[fL].get(),
+			functions[fL].get(),
+			&cellIndices
+		));
+	}
+	return products;
+}
+
+const std::vector<complex> FunctionCollection::extractAtomCellValues(const SingleDomain<complex>& data) const
+{
+	std::vector<complex> localValues, rootValues;
+	localValues.reserve(cellIndices.size());
+	for (int index : cellIndices) {
+		localValues.push_back(data[index]);
+	}
+	broadcaster->gatherArrayAtomWise(localValues, rootValues, MPI_DOUBLE_COMPLEX);
+	return rootValues;
 }
 
 //----------------------------------------------------------------------

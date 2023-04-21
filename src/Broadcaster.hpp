@@ -24,8 +24,26 @@ public:
 
 	Vector3D<double> getStepValues() const;
 
+	template<typename T>
+	void scatterArrayAtomWise(const std::vector<T>& rootInput, std::vector<T>& localOutput, MPI_Datatype mpiType) const
+	{
+		const int localAtomCount = atomCounts[mpi::rank()];
+		localOutput.resize(localAtomCount);
+		MPI_Scatterv(rootInput.data(), atomCounts.data(), atomOffsets.data(), mpiType,
+				localOutput.data(), localAtomCount, mpiType, 0, MPI_COMM_WORLD);
+	}
+
+	template<typename T>
+	void gatherArrayAtomWise(const std::vector<T>& localInput, std::vector<T>& rootOutput, MPI_Datatype mpiType) const
+	{
+		const int localAtomCount = atomCounts[mpi::rank()];
+		rootOutput.resize(totalAtomCount); // totalAtomCount will be 0 in each non-root process
+		MPI_Gatherv(localInput.data(), localAtomCount, mpiType,
+				rootOutput.data(), atomCounts.data(), atomOffsets.data(), mpiType, 0, MPI_COMM_WORLD);
+	}
+
 private:
-	int orbitalCount;
+	int orbitalCount, totalAtomCount;
 	Dimension dimensionRaw, dimensionPad;
 	DistributedDimension dimensionLocal;
 

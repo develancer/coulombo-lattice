@@ -1,6 +1,6 @@
-// Coulombo Ⓒ 2018
+// Coulombo Ⓒ 2023
 // [Computer Physics Communications] Różański & Zieliński:
-// Efficient computation of Coulomb and exchange integrals for multi-million atom nanostructures
+// Exploiting underlying crystal lattice for efficient computation of Coulomb matrix elements in multi-million atoms nanostructures
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -78,8 +78,6 @@ void coulombo(const ParseResults& pr)
 	if (pr.hasValue("dielectric", value)) {
 		dielectric = atof(value.c_str());
 	}
-	std::string integrals = "****";
-	pr.hasValue("integrals", integrals);
 
 	std::string outputDir;
 	if (pr.hasValue("output-dir", outputDir) && !outputDir.empty()) {
@@ -89,10 +87,11 @@ void coulombo(const ParseResults& pr)
 	timer.start("Reading wavefunctions");
 
 	// read input files
-	int inputCount = pr.getArgCount(), hoStateCount = 0, elStateCount = 0;
+	int inputCount = pr.getArgCount();
 	if (inputCount >= std::numeric_limits<short>::max()) {
 	    throwfr("too many input files");
 	}
+	std::vector<std::string> fileNames;
 	for (int input = 0; input<inputCount; ++input) {
 		const std::string arg = pr.getArg(input);
 
@@ -101,54 +100,9 @@ void coulombo(const ParseResults& pr)
 		if (last_slash != std::string::npos) {
 			basename += last_slash + 1;
 		}
-		if (basename[0] == 'h') {
-			if (elStateCount) {
-				throwfr("hole states must appear before electron states");
-			}
-			++hoStateCount;
-		}
-		else if (basename[0] == 'e') {
-			++elStateCount;
-		}
-		else {
-			throwfr("invalid state file name: %s", arg.c_str());
-		}
 		functions->appendFile(pr.getArg(input));
+		fileNames.push_back(basename);
 	}
-
-	timer.start("Preparing plan");
-
-	Pattern pattern(integrals, hoStateCount);
-
-	// generate list of product generators
-	auto products = functions->createProducts();
-
-	// generate list of integrals to be computed
-	std::shared_ptr<Planner> planner;
-	if (mpi::root()) {
-		planner = std::make_shared<MasterPlanner>(products.size());
-	} else {
-		planner = std::make_shared<Planner>();
-	}
-	int integralCount = 0;
-	std::vector<std::array<short, 4>> integralSpecs;
-	if (mpi::root())
-	for (short i1 = 1; i1<=inputCount; ++i1) {
-		for (short i2 = 1; i2<=inputCount; ++i2) {
-			for (short i3 = 1; i3<=inputCount; ++i3) {
-				for (short i4 = 1; i4<=inputCount; ++i4) {
-					if (pattern.match(i1, i2, i3, i4)) {
-						planner->addIntegral(i1, i2, i3, i4);
-						integralSpecs.push_back({i1, i2, i3, i4});
-						++integralCount;
-					}
-				}
-			}
-		}
-	}
-
-	// compute the correct calculation plan
-	planner->computePlan();
 
 	Dimension dimension = functions->getPaddedDimension();
 
@@ -180,85 +134,27 @@ void coulombo(const ParseResults& pr)
 	CoulombCalculator calculator(dimension);
 	calculator.initialize(*interaction);
 
-	timer.start("Computing requested integrals");
+	timer.start("Computing all quasi-potentials");
 
 	// perform the actual computation
-	complex valueLast;
-	std::vector<complex> integralValues(integralCount);
-	int lastLeftProduct = -1;
-	int lastRightProduct = -1;
-	unsigned char lastRightConjugate = 0;
+	ProductCollection products = functions->createSelfProducts();
+	auto fileNameIterator = fileNames.begin();
+	for (const auto& product : products) {
+		product->map(calculator.input, false);
+		calculator.prepare();
 
-	PlannerStep step;
-	while (planner->getNextStep(step)) {
-		if (step.left.product!=lastLeftProduct) {
-			products[step.left.product]->map(calculator.input, false);
-			calculator.prepare();
-			lastLeftProduct = step.left.product;
-		}
-		bool rightConjugate = (step.left.conjugate!=step.right.conjugate);
-		if (step.right.product!=lastRightProduct || rightConjugate!=lastRightConjugate) {
-			products[step.right.product]->map(calculator.input, rightConjugate);
-			lastRightProduct = step.right.product;
-			lastRightConjugate = rightConjugate;
-			valueLast = calculator.calculate();
-		}
+		std::vector<complex> fullPotentialValues = functions->extractAtomCellValues(calculator.potential());
 		if (mpi::root()) {
-			integralValues[step.id] = step.left.conjugate ? std::conj(valueLast) : valueLast;
+			std::string outputFilePath = outputDir + "potential-" + *fileNameIterator;
+			FILE* file = fopen(outputFilePath.c_str(), "w");
+			if (!file) {
+				throwfr("cannot open file %s for writing", outputFilePath.c_str());
+			}
+			for (complex x : fullPotentialValues) {
+				fprintf(file, "%.12le\n", x.real());
+			}
 		}
-	}
-
-	timer.start("Exporting results");
-
-	// export results to output files
-	if (mpi::root()) {
-		std::map<std::array<short, 4>, complex> values;
-		for (int i = 0; i<integralCount; ++i) {
-			const auto& specs = integralSpecs[i];
-			const complex& value = integralValues[i];
-			values[specs] = value;
-		}
-
-		char core[5]; core[4] = 0;
-		for (int ti=0; ti<2; ++ti)
-			for (int tj=0; tj<2; ++tj)
-				for (int tk=0; tk<2; ++tk)
-					for (int tl=0; tl<2; ++tl) {
-						FILE* file = nullptr;
-						core[0] = ti ? 'e' : 'h';
-						core[1] = tj ? 'e' : 'h';
-						core[2] = tk ? 'e' : 'h';
-						core[3] = tl ? 'e' : 'h';
-
-						unsigned Ni = ti ? elStateCount : hoStateCount;
-						unsigned Nj = tj ? elStateCount : hoStateCount;
-						unsigned Nk = tk ? elStateCount : hoStateCount;
-						unsigned Nl = tl ? elStateCount : hoStateCount;
-
-						for (unsigned ni=1; ni<=Ni; ++ni)
-							for (unsigned nj=1; nj<=Nj; ++nj)
-								for (unsigned nk=1; nk<=Nk; ++nk)
-									for (unsigned nl=1; nl<=Nl; ++nl) {
-
-										std::array<short, 4> specs;
-										specs[0] = ti ? hoStateCount + ni : hoStateCount + 1 - ni;
-										specs[1] = tj ? hoStateCount + nj : hoStateCount + 1 - nj;
-										specs[2] = tk ? hoStateCount + nk : hoStateCount + 1 - nk;
-										specs[3] = tl ? hoStateCount + nl : hoStateCount + 1 - nl;
-
-										auto it = values.find(specs);
-										if (it != values.end()) {
-											if (!file) file = fopen((outputDir + core + ".txt").c_str(), "w");
-											const complex value = it->second;
-											fprintf(file, "%2d %2d %2d %2d   %17.14f %17.14f\n",
-												ni, nj, nk, nl, std::real(value), std::imag(value)
-											);
-										}
-									}
-						if (file) {
-							fclose(file);
-						}
-					}
+		++fileNameIterator;
 	}
 }
 
@@ -270,7 +166,6 @@ int main(int argc, char** argv)
 		Parser cmd;
 		cmd.allowValue("atoms");
 		cmd.allowValue("dielectric");
-		cmd.allowValue("integrals");
 		cmd.allowValue("onsite");
 		cmd.allowValue("orbitals");
 		cmd.allowValue("output-dir");
@@ -286,13 +181,10 @@ int main(int argc, char** argv)
 					"Coulombo v" VERSION " (c) 2023 [Computer Physics Communications] Rozanski & Zielinski:\n"
 					"Exploiting underlying crystal lattice for efficient computation of Coulomb matrix elements in multi-million atoms nanostructures\n"
 					"\nUSAGE:\n"
-					" coulombo [FLAGS/OPTIONS] data files ...\n"
+					" potentials [FLAGS/OPTIONS] data files ...\n"
 					"\nOPTIONS:\n"
 					"  --atoms=PATH           path to *.3d file with atoms' positions\n"
 					"  --dielectric=VALUE     dielectric constant, default: 1\n"
-					"  --integrals=LIST       comma-separated list of integrals to be computed\n"
-					"                           (eg. \"eeee,hhhh,ehhe,eheh\"),\n"
-					"                           default: all integrals are computed\n"
 					"  --onsite=ENERGY        energy for on-site contribution, default: 0 (eV)\n"
 					"  --orbitals=N           number of (spin-)orbitals per atom, default: 20\n"
 					"  --output-dir=DIR       directory for output files, default: current\n"

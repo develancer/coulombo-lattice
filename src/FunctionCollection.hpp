@@ -24,9 +24,13 @@ public:
 
 	ProductCollection createProducts() const;
 
+	ProductCollection createSelfProducts() const;
+
 	Dimension getPaddedDimension() const;
 
 	Vector3D<double> getStepValues() const;
+
+	const std::vector<complex> extractAtomCellValues(const SingleDomain<complex>& data) const;
 
 protected:
 	arma::Mat<double> loadAtomsPositions(const std::string& path);
