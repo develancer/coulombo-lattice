@@ -153,8 +153,8 @@ void coulombo(const ParseResults& pr)
 			for (complex x : fullPotentialValues) {
 				fprintf(file, "%.12le\n", x.real());
 			}
+			++fileNameIterator;
 		}
-		++fileNameIterator;
 	}
 }
 
