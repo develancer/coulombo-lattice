@@ -15,22 +15,22 @@ Type::Type(MPI_Datatype datatype)
 Type::Type(Type&& source)
 		:datatype(source.datatype)
 {
-	source.datatype = nullptr;
+	source.datatype = MPI_DATATYPE_NULL;
 }
 
 Type::~Type()
 {
-	if (datatype) {
+	if (datatype != MPI_DATATYPE_NULL) {
 		MPI_Type_free(&datatype);
-		datatype = nullptr;
+		datatype = MPI_DATATYPE_NULL;
 	}
 }
 
 void Type::operator=(Type&& source)
 {
-	if (datatype) {
+	if (datatype != MPI_DATATYPE_NULL) {
 		MPI_Type_free(&datatype);
-		datatype = nullptr;
+		datatype = MPI_DATATYPE_NULL;
 	}
 	std::swap(datatype, source.datatype);
 }

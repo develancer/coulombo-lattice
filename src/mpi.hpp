@@ -10,7 +10,7 @@ namespace mpi {
 
 class Type {
 public:
-	explicit Type(MPI_Datatype datatype = nullptr);
+	explicit Type(MPI_Datatype datatype = MPI_DATATYPE_NULL);
 
 	Type(Type&& source);
 
